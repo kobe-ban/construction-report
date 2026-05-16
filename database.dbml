@@ -1,0 +1,383 @@
+﻿Project construction_report {
+  database_type: 'PostgreSQL'
+  Note: 'Schema for construction report app with bridge tracking, daily reports, chat, notifications, materials, budget, issues, and progress reporting.'
+}
+
+Enum user_role {
+  boss
+  worker
+  engineer
+  accountant
+  admin
+}
+
+Enum bridge_status {
+  not_started
+  in_progress
+  completed
+  on_hold
+  cancelled
+}
+
+Enum weather_condition {
+  sunny
+  cloudy
+  light_rain
+  rain
+  windy
+}
+
+Enum notification_type {
+  report
+  step_complete
+  chat
+  system
+  problem
+  budget
+}
+
+Enum chat_thread_type {
+  general
+  bridge
+  direct
+}
+
+Enum material_request_status {
+  pending
+  approved
+  rejected
+}
+
+Enum withdrawal_category {
+  materials
+  labor
+  equipment
+  other
+}
+
+Enum withdrawal_status {
+  draft
+  pending
+  approved
+  rejected
+  paid
+}
+
+Enum problem_severity {
+  low
+  medium
+  high
+  critical
+}
+
+Enum problem_status {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+Enum progress_status {
+  not_started
+  on_track
+  delayed
+  completed
+}
+
+Table projects {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(255) [not null]
+  location varchar(255)
+  description text
+  budget numeric(14,2) [not null, default: 0]
+  budget_spent numeric(14,2) [not null, default: 0]
+  overall_progress_pct numeric(5,2) [not null, default: 0]
+  start_date date
+  end_date date
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table users {
+  id uuid [pk]
+  employee_code varchar(50) [unique]
+  full_name varchar(255) [not null]
+  role user_role [not null]
+  phone varchar(30)
+  email varchar(255)
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table bridges {
+  id uuid [pk]
+  project_id uuid [not null, ref: > projects.id]
+  code varchar(50) [not null, unique]
+  name varchar(255) [not null]
+  location varchar(255)
+  color_hex varchar(20)
+  assigned_worker_id uuid [ref: > users.id]
+  start_date date
+  current_step_no int [not null, default: 0]
+  current_step_day int [not null, default: 0]
+  planned_total_days int [not null, default: 17]
+  status bridge_status [not null, default: 'not_started']
+  is_completed boolean [not null, default: false]
+  completed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    project_id
+    assigned_worker_id
+    (project_id, code) [unique]
+  }
+}
+
+Table bridge_stage_definitions {
+  id uuid [pk]
+  project_id uuid [ref: > projects.id, note: 'NULL means shared default stage template for all projects']
+  step_no int [not null]
+  code varchar(50)
+  name varchar(255) [not null]
+  duration_days int [not null]
+  description text
+  concurrent_with_step_no int [note: 'Step number that can run in parallel']
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    (project_id, step_no) [unique]
+  }
+}
+
+Table bridge_stage_progress {
+  id uuid [pk]
+  bridge_id uuid [not null, ref: > bridges.id]
+  stage_definition_id uuid [not null, ref: > bridge_stage_definitions.id]
+  status progress_status [not null, default: 'not_started']
+  planned_start_date date
+  planned_end_date date
+  actual_start_at timestamptz
+  actual_end_at timestamptz
+  progress_pct numeric(5,2) [not null, default: 0]
+  latest_report_id uuid [note: 'Optional link to latest report affecting this stage']
+  note text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    bridge_id
+    stage_definition_id
+    (bridge_id, stage_definition_id) [unique]
+  }
+}
+
+Table daily_reports {
+  id uuid [pk]
+  bridge_id uuid [not null, ref: > bridges.id]
+  report_date date [not null]
+  stage_definition_id uuid [not null, ref: > bridge_stage_definitions.id]
+  concurrent_stage_definition_id uuid [ref: > bridge_stage_definitions.id]
+  weather weather_condition
+  note text
+  reported_by_user_id uuid [not null, ref: > users.id]
+  reported_at timestamptz [not null, default: `now()`]
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    bridge_id
+    reported_by_user_id
+    report_date
+    (bridge_id, report_date)
+  }
+}
+
+Ref: bridge_stage_progress.latest_report_id > daily_reports.id
+
+Table report_photos {
+  id uuid [pk]
+  daily_report_id uuid [not null, ref: > daily_reports.id]
+  file_url text [not null]
+  caption varchar(255)
+  taken_at timestamptz
+  sort_order int [not null, default: 1]
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    daily_report_id
+  }
+}
+
+Table notifications {
+  id uuid [pk]
+  recipient_user_id uuid [not null, ref: > users.id]
+  bridge_id uuid [ref: > bridges.id]
+  type notification_type [not null]
+  title varchar(255) [not null]
+  body text [not null]
+  link_to varchar(255)
+  is_read boolean [not null, default: false]
+  read_at timestamptz
+  created_by_user_id uuid [ref: > users.id]
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    recipient_user_id
+    bridge_id
+    (recipient_user_id, is_read)
+  }
+}
+
+Table chat_threads {
+  id uuid [pk]
+  project_id uuid [not null, ref: > projects.id]
+  bridge_id uuid [ref: > bridges.id]
+  thread_type chat_thread_type [not null, default: 'general']
+  name varchar(255)
+  created_by_user_id uuid [ref: > users.id]
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    project_id
+    bridge_id
+  }
+}
+
+Table chat_messages {
+  id uuid [pk]
+  thread_id uuid [not null, ref: > chat_threads.id]
+  sender_user_id uuid [not null, ref: > users.id]
+  content text [not null]
+  attachment_url text
+  sent_at timestamptz [not null, default: `now()`]
+  edited_at timestamptz
+  deleted_at timestamptz
+
+  Indexes {
+    thread_id
+    sender_user_id
+    sent_at
+  }
+}
+
+Table material_requests {
+  id uuid [pk]
+  project_id uuid [not null, ref: > projects.id]
+  bridge_id uuid [ref: > bridges.id]
+  material_code varchar(50)
+  material_name varchar(255) [not null]
+  quantity numeric(12,2) [not null]
+  unit varchar(50) [not null, note: 'Keep flexible because site units can vary']
+  unit_price numeric(12,2) [not null, default: 0]
+  total_cost numeric(14,2) [not null, default: 0]
+  used_for varchar(255)
+  request_date date [not null]
+  requested_by_user_id uuid [not null, ref: > users.id]
+  status material_request_status [not null, default: 'pending']
+  approved_by_user_id uuid [ref: > users.id]
+  approved_at timestamptz
+  remark text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    project_id
+    bridge_id
+    requested_by_user_id
+    status
+  }
+}
+
+Table withdrawal_requests {
+  id uuid [pk]
+  project_id uuid [not null, ref: > projects.id]
+  bridge_id uuid [ref: > bridges.id]
+  title varchar(255) [not null]
+  category withdrawal_category [not null]
+  amount numeric(14,2) [not null]
+  description text
+  status withdrawal_status [not null, default: 'pending']
+  requested_by_user_id uuid [not null, ref: > users.id]
+  requested_at timestamptz [not null, default: `now()`]
+  approved_by_user_id uuid [ref: > users.id]
+  approved_at timestamptz
+  paid_at timestamptz
+  payment_reference varchar(100)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    project_id
+    bridge_id
+    requested_by_user_id
+    status
+    category
+  }
+}
+
+Table problems {
+  id uuid [pk]
+  project_id uuid [not null, ref: > projects.id]
+  bridge_id uuid [ref: > bridges.id]
+  related_report_id uuid [ref: > daily_reports.id]
+  title varchar(255) [not null]
+  description text [not null]
+  severity problem_severity [not null]
+  status problem_status [not null, default: 'open']
+  location varchar(255)
+  reported_by_user_id uuid [not null, ref: > users.id]
+  assigned_to_user_id uuid [ref: > users.id]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  resolved_at timestamptz
+  resolution_note text
+
+  Indexes {
+    project_id
+    bridge_id
+    status
+    severity
+    assigned_to_user_id
+  }
+}
+
+Table progress_reports {
+  id uuid [pk]
+  project_id uuid [not null, ref: > projects.id]
+  bridge_id uuid [ref: > bridges.id]
+  report_date date [not null]
+  overall_progress_pct numeric(5,2) [not null, default: 0]
+  planned_progress_pct numeric(5,2) [not null, default: 0]
+  budget_total numeric(14,2)
+  budget_spent numeric(14,2)
+  note text
+  reported_by_user_id uuid [not null, ref: > users.id]
+  created_at timestamptz [not null, default: `now()`]
+
+  Indexes {
+    project_id
+    bridge_id
+    report_date
+  }
+}
+
+Table progress_report_tasks {
+  id uuid [pk]
+  progress_report_id uuid [not null, ref: > progress_reports.id]
+  bridge_id uuid [ref: > bridges.id]
+  stage_definition_id uuid [ref: > bridge_stage_definitions.id]
+  name varchar(255) [not null]
+  planned_percent numeric(5,2) [not null, default: 0]
+  actual_percent numeric(5,2) [not null, default: 0]
+  status progress_status [not null, default: 'not_started']
+  note text
+  sort_order int [not null, default: 1]
+
+  Indexes {
+    progress_report_id
+    bridge_id
+    stage_definition_id
+  }
+}
