@@ -104,6 +104,7 @@ export interface ProgressTask {
   plannedPercent: number
   actualPercent: number
   status: ProgressStatus
+  note?: string
 }
 
 export interface ProgressReport {

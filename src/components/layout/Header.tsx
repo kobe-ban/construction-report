@@ -1,5 +1,7 @@
+'use client'
+
 import { ArrowLeft } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 
 interface HeaderProps {
   title: string
@@ -9,13 +11,13 @@ interface HeaderProps {
 }
 
 export function Header({ title, subtitle, showBack, right }: HeaderProps) {
-  const navigate = useNavigate()
+  const router = useRouter()
 
   return (
     <header className="sticky top-0 bg-white border-b border-gray-200 z-40 px-4 py-3">
       <div className="flex items-center gap-3">
         {showBack && (
-          <button onClick={() => navigate(-1)} className="p-1 -ml-1 text-gray-600">
+          <button onClick={() => router.back()} className="p-1 -ml-1 text-gray-600">
             <ArrowLeft size={22} />
           </button>
         )}

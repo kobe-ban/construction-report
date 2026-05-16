@@ -1,0 +1,500 @@
+// Prisma schema converted from database.dbml
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== Enums =====
+
+enum UserRole {
+  boss
+  worker
+  engineer
+  accountant
+  admin
+
+  @@map("user_role")
+}
+
+enum BridgeStatus {
+  not_started
+  in_progress
+  completed
+  on_hold
+  cancelled
+
+  @@map("bridge_status")
+}
+
+enum WeatherCondition {
+  sunny
+  cloudy
+  light_rain
+  rain
+  windy
+
+  @@map("weather_condition")
+}
+
+enum NotificationType {
+  report
+  step_complete
+  chat
+  system
+  problem
+  budget
+
+  @@map("notification_type")
+}
+
+enum ChatThreadType {
+  general
+  bridge
+  direct
+
+  @@map("chat_thread_type")
+}
+
+enum MaterialRequestStatus {
+  pending
+  approved
+  rejected
+
+  @@map("material_request_status")
+}
+
+enum WithdrawalCategory {
+  materials
+  labor
+  equipment
+  other
+
+  @@map("withdrawal_category")
+}
+
+enum WithdrawalStatus {
+  draft
+  pending
+  approved
+  rejected
+  paid
+
+  @@map("withdrawal_status")
+}
+
+enum ProblemSeverity {
+  low
+  medium
+  high
+  critical
+
+  @@map("problem_severity")
+}
+
+enum ProblemStatus {
+  open
+  in_progress
+  resolved
+  closed
+
+  @@map("problem_status")
+}
+
+enum ProgressStatus {
+  not_started
+  on_track
+  delayed
+  completed
+
+  @@map("progress_status")
+}
+
+// ===== Tables =====
+
+model Project {
+  id                 String   @id @default(uuid()) @db.Uuid
+  code               String   @unique @db.VarChar(50)
+  name               String   @db.VarChar(255)
+  location           String?  @db.VarChar(255)
+  description        String?
+  budget             Decimal  @default(0) @db.Decimal(14, 2)
+  budgetSpent        Decimal  @default(0) @map("budget_spent") @db.Decimal(14, 2)
+  overallProgressPct Decimal  @default(0) @map("overall_progress_pct") @db.Decimal(5, 2)
+  startDate          DateTime? @map("start_date") @db.Date
+  endDate            DateTime? @map("end_date") @db.Date
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  bridges                Bridge[]
+  bridgeStageDefinitions BridgeStageDefinition[]
+  chatThreads            ChatThread[]
+  materialRequests       MaterialRequest[]
+  withdrawalRequests     WithdrawalRequest[]
+  problems               Problem[]
+  progressReports        ProgressReport[]
+
+  @@map("projects")
+}
+
+model User {
+  id            String   @id @default(uuid()) @db.Uuid
+  employeeCode  String?  @unique @map("employee_code") @db.VarChar(50)
+  fullName      String   @map("full_name") @db.VarChar(255)
+  // Auth fields (added to support login)
+  username      String   @unique @db.VarChar(50)
+  passwordHash  String   @map("password_hash") @db.VarChar(255)
+  role          UserRole
+  phone         String?  @db.VarChar(30)
+  email         String?  @unique @db.VarChar(255)
+  isActive      Boolean  @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz()
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  bridgesAssigned        Bridge[]            @relation("BridgeAssignedWorker")
+  dailyReports           DailyReport[]       @relation("DailyReportReporter")
+  notificationsReceived  Notification[]      @relation("NotificationRecipient")
+  notificationsCreated   Notification[]      @relation("NotificationCreator")
+  chatThreadsCreated     ChatThread[]        @relation("ChatThreadCreator")
+  chatMessages           ChatMessage[]       @relation("ChatMessageSender")
+  materialsRequested     MaterialRequest[]   @relation("MaterialRequestRequester")
+  materialsApproved      MaterialRequest[]   @relation("MaterialRequestApprover")
+  withdrawalsRequested   WithdrawalRequest[] @relation("WithdrawalRequester")
+  withdrawalsApproved    WithdrawalRequest[] @relation("WithdrawalApprover")
+  problemsReported       Problem[]           @relation("ProblemReporter")
+  problemsAssigned       Problem[]           @relation("ProblemAssignee")
+  progressReports        ProgressReport[]    @relation("ProgressReporter")
+
+  @@map("users")
+}
+
+model Bridge {
+  id                String        @id @default(uuid()) @db.Uuid
+  projectId         String        @map("project_id") @db.Uuid
+  code              String        @unique @db.VarChar(50)
+  name              String        @db.VarChar(255)
+  location          String?       @db.VarChar(255)
+  colorHex          String?       @map("color_hex") @db.VarChar(20)
+  assignedWorkerId  String?       @map("assigned_worker_id") @db.Uuid
+  startDate         DateTime?     @map("start_date") @db.Date
+  currentStepNo     Int           @default(0) @map("current_step_no")
+  currentStepDay    Int           @default(0) @map("current_step_day")
+  plannedTotalDays  Int           @default(17) @map("planned_total_days")
+  status            BridgeStatus  @default(not_started)
+  isCompleted       Boolean       @default(false) @map("is_completed")
+  completedAt       DateTime?     @map("completed_at") @db.Timestamptz()
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+
+  project              Project              @relation(fields: [projectId], references: [id])
+  assignedWorker       User?                @relation("BridgeAssignedWorker", fields: [assignedWorkerId], references: [id])
+  stageProgress        BridgeStageProgress[]
+  dailyReports         DailyReport[]
+  notifications        Notification[]
+  chatThreads          ChatThread[]
+  materialRequests     MaterialRequest[]
+  withdrawalRequests   WithdrawalRequest[]
+  problems             Problem[]
+  progressReports      ProgressReport[]
+  progressReportTasks  ProgressReportTask[]
+
+  @@unique([projectId, code], name: "bridges_project_id_code_key")
+  @@index([projectId])
+  @@index([assignedWorkerId])
+  @@map("bridges")
+}
+
+model BridgeStageDefinition {
+  id                    String   @id @default(uuid()) @db.Uuid
+  projectId             String?  @map("project_id") @db.Uuid
+  stepNo                Int      @map("step_no")
+  code                  String?  @db.VarChar(50)
+  name                  String   @db.VarChar(255)
+  durationDays          Int      @map("duration_days")
+  description           String?
+  concurrentWithStepNo  Int?     @map("concurrent_with_step_no")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  project              Project?              @relation(fields: [projectId], references: [id])
+  stageProgress        BridgeStageProgress[]
+  dailyReports         DailyReport[]         @relation("DailyReportStage")
+  concurrentForReports DailyReport[]         @relation("DailyReportConcurrentStage")
+  progressReportTasks  ProgressReportTask[]
+
+  @@unique([projectId, stepNo], name: "bridge_stage_definitions_project_id_step_no_key")
+  @@map("bridge_stage_definitions")
+}
+
+model BridgeStageProgress {
+  id                  String         @id @default(uuid()) @db.Uuid
+  bridgeId            String         @map("bridge_id") @db.Uuid
+  stageDefinitionId   String         @map("stage_definition_id") @db.Uuid
+  status              ProgressStatus @default(not_started)
+  plannedStartDate    DateTime?      @map("planned_start_date") @db.Date
+  plannedEndDate      DateTime?      @map("planned_end_date") @db.Date
+  actualStartAt       DateTime?      @map("actual_start_at") @db.Timestamptz()
+  actualEndAt         DateTime?      @map("actual_end_at") @db.Timestamptz()
+  progressPct         Decimal        @default(0) @map("progress_pct") @db.Decimal(5, 2)
+  latestReportId      String?        @map("latest_report_id") @db.Uuid
+  note                String?
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+
+  bridge           Bridge                @relation(fields: [bridgeId], references: [id])
+  stageDefinition  BridgeStageDefinition @relation(fields: [stageDefinitionId], references: [id])
+  latestReport     DailyReport?          @relation("StageLatestReport", fields: [latestReportId], references: [id])
+
+  @@unique([bridgeId, stageDefinitionId], name: "bridge_stage_progress_bridge_id_stage_definition_id_key")
+  @@index([bridgeId])
+  @@index([stageDefinitionId])
+  @@map("bridge_stage_progress")
+}
+
+model DailyReport {
+  id                            String            @id @default(uuid()) @db.Uuid
+  bridgeId                      String            @map("bridge_id") @db.Uuid
+  reportDate                    DateTime          @map("report_date") @db.Date
+  stageDefinitionId             String            @map("stage_definition_id") @db.Uuid
+  concurrentStageDefinitionId   String?           @map("concurrent_stage_definition_id") @db.Uuid
+  weather                       WeatherCondition?
+  note                          String?
+  reportedByUserId              String            @map("reported_by_user_id") @db.Uuid
+  reportedAt                    DateTime          @default(now()) @map("reported_at") @db.Timestamptz()
+  createdAt                     DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+
+  bridge                  Bridge                  @relation(fields: [bridgeId], references: [id])
+  stageDefinition         BridgeStageDefinition   @relation("DailyReportStage", fields: [stageDefinitionId], references: [id])
+  concurrentStageDefinition BridgeStageDefinition? @relation("DailyReportConcurrentStage", fields: [concurrentStageDefinitionId], references: [id])
+  reportedBy              User                    @relation("DailyReportReporter", fields: [reportedByUserId], references: [id])
+  photos                  ReportPhoto[]
+  stageProgressLatest     BridgeStageProgress[]   @relation("StageLatestReport")
+  problems                Problem[]
+
+  @@index([bridgeId])
+  @@index([reportedByUserId])
+  @@index([reportDate])
+  @@index([bridgeId, reportDate])
+  @@map("daily_reports")
+}
+
+model ReportPhoto {
+  id            String   @id @default(uuid()) @db.Uuid
+  dailyReportId String   @map("daily_report_id") @db.Uuid
+  fileUrl       String   @map("file_url")
+  caption       String?  @db.VarChar(255)
+  takenAt       DateTime? @map("taken_at") @db.Timestamptz()
+  sortOrder     Int      @default(1) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  dailyReport DailyReport @relation(fields: [dailyReportId], references: [id])
+
+  @@index([dailyReportId])
+  @@map("report_photos")
+}
+
+model Notification {
+  id                String           @id @default(uuid()) @db.Uuid
+  recipientUserId   String           @map("recipient_user_id") @db.Uuid
+  bridgeId          String?          @map("bridge_id") @db.Uuid
+  type              NotificationType
+  title             String           @db.VarChar(255)
+  body              String
+  linkTo            String?          @map("link_to") @db.VarChar(255)
+  isRead            Boolean          @default(false) @map("is_read")
+  readAt            DateTime?        @map("read_at") @db.Timestamptz()
+  createdByUserId   String?          @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+
+  recipient User    @relation("NotificationRecipient", fields: [recipientUserId], references: [id])
+  bridge    Bridge? @relation(fields: [bridgeId], references: [id])
+  createdBy User?   @relation("NotificationCreator", fields: [createdByUserId], references: [id])
+
+  @@index([recipientUserId])
+  @@index([bridgeId])
+  @@index([recipientUserId, isRead])
+  @@map("notifications")
+}
+
+model ChatThread {
+  id              String         @id @default(uuid()) @db.Uuid
+  projectId       String         @map("project_id") @db.Uuid
+  bridgeId        String?        @map("bridge_id") @db.Uuid
+  threadType      ChatThreadType @default(general) @map("thread_type")
+  name            String?        @db.VarChar(255)
+  createdByUserId String?        @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+
+  project   Project       @relation(fields: [projectId], references: [id])
+  bridge    Bridge?       @relation(fields: [bridgeId], references: [id])
+  createdBy User?         @relation("ChatThreadCreator", fields: [createdByUserId], references: [id])
+  messages  ChatMessage[]
+
+  @@index([projectId])
+  @@index([bridgeId])
+  @@map("chat_threads")
+}
+
+model ChatMessage {
+  id             String    @id @default(uuid()) @db.Uuid
+  threadId       String    @map("thread_id") @db.Uuid
+  senderUserId   String    @map("sender_user_id") @db.Uuid
+  content        String
+  attachmentUrl  String?   @map("attachment_url")
+  sentAt         DateTime  @default(now()) @map("sent_at") @db.Timestamptz()
+  editedAt       DateTime? @map("edited_at") @db.Timestamptz()
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz()
+
+  thread ChatThread @relation(fields: [threadId], references: [id])
+  sender User       @relation("ChatMessageSender", fields: [senderUserId], references: [id])
+
+  @@index([threadId])
+  @@index([senderUserId])
+  @@index([sentAt])
+  @@map("chat_messages")
+}
+
+model MaterialRequest {
+  id                  String                @id @default(uuid()) @db.Uuid
+  projectId           String                @map("project_id") @db.Uuid
+  bridgeId            String?               @map("bridge_id") @db.Uuid
+  materialCode        String?               @map("material_code") @db.VarChar(50)
+  materialName        String                @map("material_name") @db.VarChar(255)
+  quantity            Decimal               @db.Decimal(12, 2)
+  unit                String                @db.VarChar(50)
+  unitPrice           Decimal               @default(0) @map("unit_price") @db.Decimal(12, 2)
+  totalCost           Decimal               @default(0) @map("total_cost") @db.Decimal(14, 2)
+  usedFor             String?               @map("used_for") @db.VarChar(255)
+  requestDate         DateTime              @map("request_date") @db.Date
+  requestedByUserId   String                @map("requested_by_user_id") @db.Uuid
+  status              MaterialRequestStatus @default(pending)
+  approvedByUserId    String?               @map("approved_by_user_id") @db.Uuid
+  approvedAt          DateTime?             @map("approved_at") @db.Timestamptz()
+  remark              String?
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime              @updatedAt @map("updated_at") @db.Timestamptz()
+
+  project     Project @relation(fields: [projectId], references: [id])
+  bridge      Bridge? @relation(fields: [bridgeId], references: [id])
+  requestedBy User    @relation("MaterialRequestRequester", fields: [requestedByUserId], references: [id])
+  approvedBy  User?   @relation("MaterialRequestApprover", fields: [approvedByUserId], references: [id])
+
+  @@index([projectId])
+  @@index([bridgeId])
+  @@index([requestedByUserId])
+  @@index([status])
+  @@map("material_requests")
+}
+
+model WithdrawalRequest {
+  id                String             @id @default(uuid()) @db.Uuid
+  projectId         String             @map("project_id") @db.Uuid
+  bridgeId          String?            @map("bridge_id") @db.Uuid
+  title             String             @db.VarChar(255)
+  category          WithdrawalCategory
+  amount            Decimal            @db.Decimal(14, 2)
+  description       String?
+  status            WithdrawalStatus   @default(pending)
+  requestedByUserId String             @map("requested_by_user_id") @db.Uuid
+  requestedAt       DateTime           @default(now()) @map("requested_at") @db.Timestamptz()
+  approvedByUserId  String?            @map("approved_by_user_id") @db.Uuid
+  approvedAt        DateTime?          @map("approved_at") @db.Timestamptz()
+  paidAt            DateTime?          @map("paid_at") @db.Timestamptz()
+  paymentReference  String?            @map("payment_reference") @db.VarChar(100)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+
+  project     Project @relation(fields: [projectId], references: [id])
+  bridge      Bridge? @relation(fields: [bridgeId], references: [id])
+  requestedBy User    @relation("WithdrawalRequester", fields: [requestedByUserId], references: [id])
+  approvedBy  User?   @relation("WithdrawalApprover", fields: [approvedByUserId], references: [id])
+
+  @@index([projectId])
+  @@index([bridgeId])
+  @@index([requestedByUserId])
+  @@index([status])
+  @@index([category])
+  @@map("withdrawal_requests")
+}
+
+model Problem {
+  id                String          @id @default(uuid()) @db.Uuid
+  projectId         String          @map("project_id") @db.Uuid
+  bridgeId          String?         @map("bridge_id") @db.Uuid
+  relatedReportId   String?         @map("related_report_id") @db.Uuid
+  title             String          @db.VarChar(255)
+  description       String
+  severity          ProblemSeverity
+  status            ProblemStatus   @default(open)
+  location          String?         @db.VarChar(255)
+  reportedByUserId  String          @map("reported_by_user_id") @db.Uuid
+  assignedToUserId  String?         @map("assigned_to_user_id") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  resolvedAt        DateTime?       @map("resolved_at") @db.Timestamptz()
+  resolutionNote    String?         @map("resolution_note")
+
+  project       Project      @relation(fields: [projectId], references: [id])
+  bridge        Bridge?      @relation(fields: [bridgeId], references: [id])
+  relatedReport DailyReport? @relation(fields: [relatedReportId], references: [id])
+  reportedBy    User         @relation("ProblemReporter", fields: [reportedByUserId], references: [id])
+  assignedTo    User?        @relation("ProblemAssignee", fields: [assignedToUserId], references: [id])
+
+  @@index([projectId])
+  @@index([bridgeId])
+  @@index([status])
+  @@index([severity])
+  @@index([assignedToUserId])
+  @@map("problems")
+}
+
+model ProgressReport {
+  id                  String   @id @default(uuid()) @db.Uuid
+  projectId           String   @map("project_id") @db.Uuid
+  bridgeId            String?  @map("bridge_id") @db.Uuid
+  reportDate          DateTime @map("report_date") @db.Date
+  overallProgressPct  Decimal  @default(0) @map("overall_progress_pct") @db.Decimal(5, 2)
+  plannedProgressPct  Decimal  @default(0) @map("planned_progress_pct") @db.Decimal(5, 2)
+  budgetTotal         Decimal? @map("budget_total") @db.Decimal(14, 2)
+  budgetSpent         Decimal? @map("budget_spent") @db.Decimal(14, 2)
+  note                String?
+  reportedByUserId    String   @map("reported_by_user_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  project     Project              @relation(fields: [projectId], references: [id])
+  bridge      Bridge?              @relation(fields: [bridgeId], references: [id])
+  reportedBy  User                 @relation("ProgressReporter", fields: [reportedByUserId], references: [id])
+  tasks       ProgressReportTask[]
+
+  @@index([projectId])
+  @@index([bridgeId])
+  @@index([reportDate])
+  @@map("progress_reports")
+}
+
+model ProgressReportTask {
+  id                 String         @id @default(uuid()) @db.Uuid
+  progressReportId   String         @map("progress_report_id") @db.Uuid
+  bridgeId           String?        @map("bridge_id") @db.Uuid
+  stageDefinitionId  String?        @map("stage_definition_id") @db.Uuid
+  name               String         @db.VarChar(255)
+  plannedPercent     Decimal        @default(0) @map("planned_percent") @db.Decimal(5, 2)
+  actualPercent      Decimal        @default(0) @map("actual_percent") @db.Decimal(5, 2)
+  status             ProgressStatus @default(not_started)
+  note               String?
+  sortOrder          Int            @default(1) @map("sort_order")
+
+  progressReport  ProgressReport         @relation(fields: [progressReportId], references: [id])
+  bridge          Bridge?                @relation(fields: [bridgeId], references: [id])
+  stageDefinition BridgeStageDefinition? @relation(fields: [stageDefinitionId], references: [id])
+
+  @@index([progressReportId])
+  @@index([bridgeId])
+  @@index([stageDefinitionId])
+  @@map("progress_report_tasks")
+}

@@ -1,4 +1,6 @@
-﻿import { create } from 'zustand'
+'use client'
+
+import { create } from 'zustand'
 import type { Bridge, DailyReport, Notification, Project, Problem, MaterialUsage, WithdrawalRequest } from '@/types'
 import { mockBridges, mockReports, mockNotifications, mockProject, mockProblems, mockMaterials, mockWithdrawals, currentUser } from '@/lib/mockData'
 
@@ -71,7 +73,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const newReport: DailyReport = { ...report, id, reportedAt: new Date().toISOString() }
     set(s => ({ reports: [...s.reports, newReport] }))
 
-    // Add notification for boss
     const bridge = get().bridges.find(b => b.id === report.bridgeId)
     get().addNotification({
       type: 'report',
@@ -97,8 +98,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         ...s.notifications,
       ],
     })),
-
-
 
   // Project
   project: mockProject,
@@ -138,4 +137,3 @@ export const useAppStore = create<AppStore>((set, get) => ({
       ],
     })),
 }))
-
